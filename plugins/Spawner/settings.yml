@@ -1,0 +1,12 @@
+---
+zombie: 50000
+skeleton: 50000
+spider: 50000
+pigman: 50000
+iron_golem: 50000
+blaze: 50000
+pig: 50000
+cow: 50000
+chicken: 50000
+squid: 50000
+...

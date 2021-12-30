@@ -1,0 +1,6 @@
+name: SlapperRotation Việt Hóa By Sói Con
+main: SlapperRotation\Main
+version: 1.1
+api: [3.0.0-ALPHA5, 3.0.0-ALPHA6]
+author: SoiCon
+description: Slapper bản này thêm tính năng nhìn player khi họ duy chuyển

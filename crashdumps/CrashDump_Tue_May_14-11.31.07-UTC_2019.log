@@ -1,0 +1,109 @@
+GenisysPro Crash Dump Tue May 14 11:31:07 UTC 2019
+
+Error: Class PM\ChatSystem\Main not found
+File: /src/spl/BaseClassLoader
+Line: 131
+Type: notice
+
+THIS CRASH WAS CAUSED BY A PLUGIN
+
+Code:
+[122] 	 *
+[123] 	 * @return bool
+[124] 	 */
+[125] 	public function loadClass($name){
+[126] 		$path = $this->findClass($name);
+[127] 		if($path !== null){
+[128] 			include($path);
+[129] 			if(!class_exists($name, false) and !interface_exists($name, false) and !trait_exists($name, false)){
+[130] 				if($this->getParent() === null){
+[131] 					throw new ClassNotFoundException("Class $name not found");
+[132] 				}
+[133] 				return false;
+[134] 			}
+[135] 
+[136] 			if(method_exists($name, "onClassLoaded") and (new ReflectionClass($name))->getMethod("onClassLoaded")->isStatic()){
+[137] 				$name::onClassLoaded();
+[138] 			}
+[139] 			
+[140] 			$this->classes[] = $name;
+[141] 
+
+Backtrace:
+#0 (): spl_autoload_call(string PM\ChatSystem\Main)
+#1 /src/pocketmine/plugin/FolderPluginLoader(76): class_exists(string PM\ChatSystem\Main, boolean 1)
+#2 /src/pocketmine/plugin/PluginManager(159): pocketmine\plugin\FolderPluginLoader->loadPlugin(string /storage/emulated/0/PocketMine-MP/plugins/ChatSystem_v1.6)
+#3 /src/pocketmine/plugin/PluginManager(346): pocketmine\plugin\PluginManager->loadPlugin(string /storage/emulated/0/PocketMine-MP/plugins/ChatSystem_v1.6, array Array())
+#4 /src/pocketmine/Server(1898): pocketmine\plugin\PluginManager->loadPlugins(string /storage/emulated/0/PocketMine-MP/plugins/)
+#5 /src/pocketmine/PocketMine(492): pocketmine\Server->__construct(BaseClassLoader object, pocketmine\utils\MainLogger object, string phar:///storage/emulated/0/PocketMine-MP/PocketMine-MP.phar/, string /storage/emulated/0/PocketMine-MP/, string /storage/emulated/0/PocketMine-MP/plugins/)
+#6 (1): require_once(string phar:///storage/emulated/0/PocketMine-MP/PocketMine-MP.phar/src/pocketmine/PocketMine.php)
+
+GenisysPro version: 0000000000000000000000000000000000000000 [Protocol 113; API 3.0.1]
+uname -a: Linux localhost 3.18.14-14381225-QB21144449 #1 SMP PREEMPT Tue Dec 18 19:58:01 KST 2018 armv8l
+PHP version: 7.2.9
+Zend version: 3.2.0
+OS : Linux, android
+
+Server uptime: 2 seconds
+Number of loaded worlds: 0
+Players online: 0/20
+
+Loaded plugins:
+ManyWorlds 2.2.0dev1 by aliuly for API(s) 2.0.0
+MagicWE 0.2.6 by thebigsmileXD for API(s) 1.13.0, 2.0.0
+Fireworks_JJBH 1.0 by Jaciel by Jaciel14 for API(s) 1.12.0
+iProtector 3.1b by LDX for API(s) 1.9.0, 2.0.0
+CoreProtect 0.1.5 by ImagicalGamer for API(s) 1.0.0, 2.0.0, 3.0.0
+MSpawns 1.5 by EvolSoft for API(s) 2.0.0, 3.0.0-ALPHA1, 3.0.0-ALPHA2, 3.0.0-ALPHA3, 3.0.0-ALPHA4
+AntiVoid 1.0.0 by KairusDarkSeeker for API(s) 2.0.0
+PurePerms 1.3.7 by 64FF00 & ProjectInfinity for API(s) 1.13.0, 2.0.0
+RealTime 2.1.1 by Guillaume351 for API(s) 2.0.0, 3.0.0-ALPHA5
+REDNoBreak 0.1 by Adam1609 for API(s) 2.0.0
+SignEnchant 1.1.1 by FRONGKY for API(s) 1.0.0, 1.1.0, 1.2.0, 1.2.1, 3.0.0-ALPHA6, 3.0.0-ALPHA5, 3.0.0-ALPHA4, 2.0.0
+WorldLoader 1 by KhoaGamingPro for API(s) 3.0.0, 3.0.0-ALPHA6
+EconomyAPI 2.0.9 by onebone for API(s) 2.0.0
+EconomySell 2.0.7 by onebone for API(s) 1.12.0
+TheMask 1.0.0 by frongky for API(s) 1.0.0, 1.1.0, 1.2.0, 1.2.1, 3.0.0-ALPHA6, 3.0.0-ALPHA5, 3.0.0-ALPHA4, 2.0.0
+SimpleAuth 1.8.1 by PocketMine Team, shoghicp, awzaw for API(s) 2.0.0, 3.0.0-ALPHA1, 3.0.0-ALPHA2, 3.0.0-ALPHA3, 3.0.0-ALPHA4, 3.0.0-ALPHA5
+SimpleAuthHelper 2.0.1 by aliuly for API(s) 1.12.0
+EconomyShop 2.0.7 by onebone for API(s) 1.12.0
+FrameKeeper 1.1 by KhoaGamingPro for API(s) 3.0.0, 3.0.1, 3.0.0-ALPHA1, 3.0.0-ALPHA2, 3.0.0-ALPHA3, 3.0.0-ALPHA3, 3.0.0-ALPHA4, 3.0.0-ALPHA5, 3.0.0-ALPHA6
+GodMode 2.4 by LDX for API(s) 1.0.0, 2.0.0
+SlapperRotation 1.1 by SoiCon for API(s) 3.0.0-ALPHA5, 3.0.0-ALPHA6
+OPS 1.0.2 by Không Biết Tên @@ for API(s) 2.0.0
+WorldProtect 1 by PTK-KienPham for API(s) 2.0.0, 3.0.0-ALPHA1, 3.0.0-ALPHA2, 3.0.0-ALPHA3, 3.0.0-ALPHA4, 3.0.0-ALPHA5
+essentialsTP 1.1.0 by  for API(s) 1.12.0
+Slapper 1.1 by SoiCon for API(s) 3.0.0-ALPHA5, 3.0.0-ALPHA6
+RandomOre 2.0.0 by SoraLifeVN for API(s) 3.0.0
+xyz 1.0.1 by Ghast Noob for API(s) 1.0.0
+DevTools 1.11.0 by PocketMine Team for API(s) 3.0.0
+FactionsPro 0.1 by Array for API(s) 1.14.0, 2.0.0- 3.0.0-ALPHA9
+MuaItem 4 by HeoGM for API(s) 2.0.0
+BuyKIT 1 by Phuongaz for API(s) 2.0.0
+BuyFly 1 by MCPE14 for API(s) 2.0.0
+Buyfix 1.0.0 by Niolz Gamer for API(s) 2.0.0
+TopIS 2 by kuraLLsz for API(s) 3.0.0-ALPHA6
+Buy_Particles 1.1.0 by Anon for API(s) 2.0.0
+BanItem 2.2 by Ghast for API(s) 1.0.0, 2.0.0
+Theo_Doi 1.2.0 by HotshotHD & CodeRed2019 for API(s) 1.13.0, 2.0.0, 3.0.0, 3.0.0-ALPHA5
+Alias 1.2.0 by Ghast Noob for API(s) 1.12.0
+Feed 1 by  for API(s) 2.0.0
+Farms 1.0-non-alpha by Dấu Tên for API(s) 1.4.1
+DF 0.1 by PTK-KienPham for API(s) 2.0.0, 3.0.0
+VipDay 1.0.0 by PTK-KienPham for API(s) 2.0.0, 3.0.0
+Particles_Shape 1 by BEcraft Gameplay for API(s) 2.0.0, 2.1.0, 3.0.0, 3.0.0-ALPHA4, 3.0.0-ALPHA5
+Spawner 2 by Ghast for API(s) 2.0.0
+Pets 2 by NameLess for API(s) 1.0.0, 2.0.0, 3.0.0-ALPHA1, 3.0.0-ALPHA2
+ItemEffect 1.0.0 by KairusDarkSeeker for API(s) 3.0.0, 3.0.0-ALPHA5
+Muado 1 by AmGM for API(s) 2.0.0, 3.0.0
+AntiSpam 2 by xBeastMode for API(s) 2.0.0
+BuyEc 2 by  for API(s) 2.0.0, 3.0.0
+Healer 1 by Ghast Noob for API(s) 2.0.0, 3.0.0, 3.0.0-ALPHA6
+Size 2 by emanuele0204 for API(s) 2.0.0, 2.1.0, 3.0.0APLHA1, 3.0.0
+Fly 2 by DragonPlayzMC for API(s) 2.0.0
+MuaRank 1.1 by Bravocraft Team for API(s) 2.0.0
+Ve_So 3 by AmGM for API(s) 2.0.0
+Sell 2 by Muqsit for API(s) 2.0.0
+Trade 1.1 by Phuongaz[RemakeALLItem] for API(s) 2.0.0, 3.0.0-ALPHA9
+WingFire 1.3 by vk.com/eddir for API(s) 1.0.0
+CatBarPlus 1 by birdkkk for API(s) 1.0.0, 2.0.0, 2.1.0, 3.0.0, 3.0.0-ALPHA1, 3.0.0-ALPHA2, 3.0.0-ALPHA3, 3.0.0-ALPHA4

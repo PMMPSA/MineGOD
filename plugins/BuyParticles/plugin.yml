@@ -1,0 +1,10 @@
+name: Buy_Particles
+main: Anon\aParticles
+translator: Ghast Noob
+version: 1.1.0
+api: 2.0.0
+author: Anon
+
+commands:
+  hieuung:
+    description: Giúp Người Chơi Mua Hiệu Ứng Riêng Cho Mình

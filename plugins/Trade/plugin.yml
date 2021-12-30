@@ -1,0 +1,9 @@
+name: Trade
+version: 1.1
+main: Phuongaz\trade\Main
+author: Phuongaz[RemakeALLItem]
+api: [2.0.0, 3.0.0-ALPHA9]
+youtube: http://bit.do/YT-Phuongaz
+commands:
+ trade:
+  default: true

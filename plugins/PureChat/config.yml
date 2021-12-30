@@ -1,0 +1,22 @@
+---
+version: 1.4.0-BETA-04
+default-factions-plugin: ~
+enable-multiworld-chat: false
+groups:
+  Guest:
+    chat: §c[§e{fac_name}§r§c] §e⊹⊱§b{display_name}§e⊰⊹ §a{msg}
+    nametag: §c[§e{fac_name}§r§c] §e⊹⊱§b{display_name}§r§e⊰⊹
+    worlds: []
+  vip1:
+    nametag: §c[§e{fac_name}§r§c] §c༺§eVIP§f-§aI§c༻ §e⊹⊱§b{display_name}§r§e⊰⊹
+    chat: §c[§e{fac_name}§r§c] §c༺§eVIP§f-§aI§c༻ §e⊹⊱§b{display_name}§r§e⊰⊹ §a{msg}
+  vip2:
+    nametag: §c[§e{fac_name}§r§c] §c༺§eVIP§f-§aII§c༻ §e⊹⊱§b{display_name}§r§e⊰⊹
+    chat: §c[§e{fac_name}§r§c] §c༺§eVIP§f-§aII§c༻ §e⊹⊱§b{display_name}§r§e⊰⊹ §a{msg}
+  vip3:
+    nametag: §c[§e{fac_name}§r§c] §c༺§eVIP§f-§aIII§c༻ §e⊹⊱§b{display_name}§r§e⊰⊹
+    chat: §c[§e{fac_name}§r§c] §c༺§eVIP§f-§aIII§c༻ §e⊹⊱§b{display_name}§r§e⊰⊹ §a{msg}
+  god:
+    nametag: §c[§e{fac_name}§r§c] §c༺§eG§aO§bD§c༻ §e⊹⊱§b{display_name}§e⊰⊹
+    chat: §c[§e{fac_name}§r§c] §c༺§eG§aO§bD§c༻ §e⊹⊱§b{display_name}§e⊰⊹ §a{msg}
+...

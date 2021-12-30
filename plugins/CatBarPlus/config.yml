@@ -1,0 +1,36 @@
+---
+#=================================
+#{player}- Tên Người Chơi <<<<<<<
+#{group} - Rank <<<<<<<
+#{faction} - Hội <<<<<<<
+#{money} - Tiền <<<<<<<
+#{gm} - Gamemode <<<<<<
+#{IP} - IP Server <<<<<<<
+#{onl} - Số Người Online <<<<<<
+#{monl} - Max Online <<<<<<<
+#{hp} - Máu <<<<<<<
+#{maxhp} - Max Máu <<<<<<
+#{X} {Y} {Z} - Tọa Độ <<<<<<<
+#{level} - Cấp Độ <<<<<<<
+#{time} - Thời Gian <<<<<<<
+#{id}:{ids} - ID ItemItem <<<<<<<
+#{item} - Tên Item <<<<<<<
+#{tps} - TPS Server <<<<<<<
+#{usage}- USAGE Server <<<<<<<
+#{tag} - Trên Đầu <<<<<<<
+
+#{kill} - Số Lần Giết <<<<<<<
+#{deaths} - Số Lần Chết<<<<<<
+
+#{R1} - Màu Văn Bản Ngẫu Nhiên Từ {R1} Đến {R15}<Lên <<<<<
+
+#{h} - Không Biết Dịch <<<<<
+#{n} - Dòng Mới <<<<<<<
+#\n - Nâng Thanh Lên
+
+#=================================
+
+CatPlus: "{h}§l§e[-={R3}MINEGOD §cX {R3}SkyBlock§e=-]§r\n{h}§l{R1}•§eKính Chào§b: §a{player}§r\n{h}§l{R1}•§eRank§b: §a{group}§r\n{h}§l{R1}•§eOnline§b: §a{onl}§f/§a{monl}§r\n{h}§l{R1}•§eSố Tiền§b: §a{money}§r\n{h}§l{R1}•§eGuild§b: §a{faction}§r\n{h}§l{R1}•§eID Item§b: §a{id}§f:§a{ids}§r\n\n\n\n\n\n\n\n\n\n\n\n\n\n§r"
+
+#=================================
+...

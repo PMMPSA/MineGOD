@@ -1,0 +1,56 @@
+---
+Guest:
+  alias: gst
+  isDefault: true
+  inheritance: []
+  permissions:
+  - -essentials.kit
+  - -essentials.kit.other
+  - -pocketmine.command.me
+  - pchat.colored.format
+  - pchat.colored.nametag
+  - pocketmine.command.list
+  - pperms.command.ppinfo
+  worlds: []
+vip1:
+  alias: ""
+  isDefault: false
+  inheritance: []
+  permissions:
+  - fly.command
+  - pocketmine.command.teleport
+  - wingfire.command
+  worlds: []
+vip2:
+  alias: ""
+  isDefault: false
+  inheritance: []
+  permissions:
+  - feedme.feed
+  - fly.command
+  - pocketmine.command.teleport
+  - wingfire.command
+  - wingheart.command
+  worlds: []
+vip3:
+  alias: ""
+  isDefault: false
+  inheritance: []
+  permissions:
+  - feedme.feed
+  - fly.command
+  - heal.chobanthan
+  - pocketmine.command.teleport
+  - wingfire.command
+  - winghappy.command
+  - wingheart.command
+  worlds: []
+god:
+  alias: ""
+  isDefault: false
+  inheritance: []
+  permissions:
+  - fly.command
+  - pocketmine.command.teleport
+  worlds: []
+...

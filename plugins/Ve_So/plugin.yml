@@ -1,0 +1,8 @@
+name: Ve_So
+main: AmGM\QT1
+version: 3
+author: AmGM
+api: 2.0.0
+commands:
+    veso:
+        description: Quay

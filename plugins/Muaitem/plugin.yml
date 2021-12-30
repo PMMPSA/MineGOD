@@ -1,0 +1,9 @@
+name: MuaItem
+version: 4.0
+main: HeoGM\Main
+author: HeoGM
+#Config Bởi Ghast Noob
+api: 2.0.0
+commands:
+ muaitem:
+  default: true

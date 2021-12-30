@@ -1,0 +1,9 @@
+---
+protect: lock
+pvp: false
+banitem:
+  10: Lava
+  8: Water
+  325: Bucket
+  259: Flint and Steel
+...

@@ -1,0 +1,1843 @@
+main: aliuly\manyworlds\Main
+api: 2.0.0
+load: POSTWORLD
+
+
+name: ManyWorlds
+description: Manage Multiple Worlds
+version: 2.2.0dev1
+author: aliuly
+website: https://github.com/Muirfield/ManyWorlds
+
+commands:
+  manyworlds:
+    description: Manage worlds
+    usage: "/mw <help|sub-cmd> [options]"
+    permission: mw.cmds
+    aliases: [mw]
+
+permissions:
+  mw.cmds:
+    default: true
+    description: "Allow all the ManyWorlds functionality"
+  mw.cmd.tp:
+    default: op
+    description: "Allows users to travel to other worlds"
+  mw.cmd.tp.others:
+    default: op
+    description: "Allows users to make others travel to other worlds"
+  mw.cmd.ls:
+    default: op
+    description: "Allows users to list worlds"
+  mw.cmd.world.create:
+    default: op
+    description: "Allows users to create worlds"
+  mw.cmd.world.load:
+    default: op
+    description: "Allows users to load worlds"
+  mw.cmd.lvdat:
+    default: op
+    description: "Manipulate level.dat"
+  mw.cmd.default:
+    default: op
+    description: "Changes default world"
+<?php
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\ModularPlugin;
+use aliuly\mw\common\HelpSubCmd;
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use pocketmine\command\CommandSender;
+
+use aliuly\manyworlds\MwTp;
+use aliuly\manyworlds\MwLs;
+use aliuly\manyworlds\MwCreate;
+use aliuly\manyworlds\MwGenLst;
+use aliuly\manyworlds\MwLoader;
+use aliuly\manyworlds\MwLvDat;
+use aliuly\manyworlds\MwDefault;
+
+class Main extends ModularPlugin {
+  public function onEnable() {
+    mc::init($this,$this->getFile());
+
+    $this->addModule("teleport",new MwTp($this,[]));
+    $this->addModule("lister",new MwLs($this,[]));
+    $this->addModule("creator",new MwCreate($this,[]));
+    $this->addModule("genlister",new MwGenLst($this,[]));
+    $this->addModule("loader",new MwLoader($this,[]));
+    $this->addModule("unloader",new MwUnload($this,[]));
+    $this->addModule("default",new MwDefault($this,[]));
+    $this->addModule("lvdat",new MwLvDat($this,[]));
+    $this->addModule("lvdat",new MwFixName($this,[]));
+    $this->addModule("mwhelp",new HelpSubCmd($this,"manyworlds"));
+  }
+
+  /**
+   * Autoload a world
+   *
+   * @param CommandSender $c - person attempting this operation
+   * @param str $world - world to load
+   * @return bool - TRUE on success, FALSE on ERROR
+   */
+  public function autoLoad(CommandSender $c,$world) {
+    if ($this->getServer()->isLevelLoaded($world)) return TRUE;
+    if($c !== NULL && !Perms::access($c, "mw.cmd.world.load")) return FALSE;
+    if(!$this->getServer()->isLevelGenerated($world)) {
+      if ($c !== NULL) $c->sendMessage(mc::_("[MW] No world with the name %1% exists!", $world));
+      return FALSE;
+    }
+    $this->getServer()->loadLevel($world);
+    return $this->getServer()->isLevelLoaded($world);
+  }
+}
+
+<?php
+//= api-features
+//: - Modular plugins
+namespace aliuly\mw\common;
+use aliuly\mw\common\BasicPlugin;
+use aliuly\mw\common\IModular;
+use aliuly\mw\common\IModule;
+use aliuly\mw\common\IDispatchable;
+use aliuly\mw\common\ISubDispatchable;
+use aliuly\mw\common\CmdDispatcher;
+use aliuly\mw\common\SubCmdDispatcher;
+use aliuly\mw\common\mc;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\command\CommandExecutor;
+use pocketmine\utils\Config;
+/**
+ * Modular plugin class
+ */
+abstract class ModularPlugin extends BasicPlugin implements IModular {
+  /** @var str - Marks as a module that is being loaded */
+  const ST_LOADING = "is_loading...";
+  /** @var array - Module array */
+  protected $modules = NULL;
+  /** @var IDispatcher - commmand dispatcher */
+  protected $cmds = NULL;
+  /**
+   * @param str $name - module to look-up
+   * @return NULL|IModule
+   */
+  public function getModule($name) {
+    if (is_array($this->modules)) {
+      while (isset($this->modules[$name])) {
+	if ($this->modules[$name] instanceof IModule) return $this->modules[$name];
+	$name = $this->modules[$name];
+      }
+    }
+    return NULL;
+  }
+  /**
+   * Get array with modules
+   * @return array
+   */
+  public function getModules() {
+    return $this->modules;
+  }
+  /**
+   * Given some defaults, this will load optional modules
+   *
+   * @param array $mods - module definition
+   * @param array $defaults - default options to use for config.yml
+   * @return array
+   */
+  public function modConfig($mods,$defaults) {
+    if (!isset($defaults["features"])) $defaults["features"] = [];
+    foreach ($mods as $i => $j) {
+      $defaults["features"][$i] = $j[1];
+    }
+    if (!is_dir($this->getDataFolder())) mkdir($this->getDataFolder());
+    $cfg=(new Config($this->getDataFolder()."config.yml",Config::YAML,$defaults))->getAll();
+			    
+    $this->modules = [];
+    
+    foreach ($cfg["features"] as $i=>$j) {
+      if (!$j) continue;
+      $this->enableModule($i,$mods,$cfg);
+    }
+    $c = count($this->modules);
+    if ($c == 0) {
+      $this->getLogger()->info(mc::_("NO features enabled"));
+    } else {
+      $c /= 2;
+      $this->getLogger()->info(mc::n(mc::_("Enabled one feature"),mc::_("Enabled %1% features",$c),$c));
+    }
+    return $cfg;
+  }
+
+  protected function enableModule($feature,$mods,$cfg) {
+    if (!is_array($this->modules)) return;
+    if (!isset($mods[$feature])) {
+      $this->getLogger()->info(mc::_("Unknown feature \"%1%\" ignored.",$feature));
+      return;
+    }
+    $features = $mods[$feature][0];
+    if (!is_array($features)) $features = [ $features ];
+    $this->modules[$feature] = self::ST_LOADING;
+
+    $i = count($features);
+    $class = NULL;
+    foreach ($features as $class) {
+      --$i;
+      if (isset($this->modules[$class])) continue; // Already loaded...
+      if (isset($mods[$class])) {
+	// This is a feature reference...
+	$this->enableModule($class,$mods,$cfg);
+      } else {
+	// Load class...
+	$obj = new $class($this,$i ? [] : (isset($cfg[$feature]) ? $cfg[$feature] : []));
+	if ($obj instanceof IModule) {
+	  $this->modules[$class] = $obj;
+	} else {
+	  $this->getLogger()->error(mc::_("%1% is not an instance of %2%", $class, IModule::class));
+	  return;
+	}
+      }
+    }
+    if ($class == NULL) {
+      $this->getLogger()->error(mc::_("Error activating feature \"%1%\"",$feature));
+      return;
+    }
+    $this->modules[$feature] = $class;
+    return;
+  }
+  /**
+   * Add Module
+   * @param str $feature|NULL - Feature name
+   * @param str|IModule $obj - Alias or IModule object
+   */
+  public function addModule($feature,$obj) {
+    if ($obj instanceof IModule) {
+      if ($feature == NULL) {
+	$class =get_class($obj);
+      } else {
+	$class = $this->modules[$feature ] = get_class($obj);
+      }
+      $this->modules[$class] = $obj;
+    } else // Guess this is an alias...
+      $this->modules[$feature] = $obj;
+  }
+
+  /**
+   * Call a module method
+   * @param str $name - module
+   * @param str $method - method name
+   * @param array $args - arguments to use
+   * @param mixed $def - return value if $name or $method are not found
+   * @return mixed
+   */
+  public function callModule($name,$method,$args = [], $def= NULL) {
+    $module = $this->getModule($name);
+    if ($module === NULL) return $def;
+    if (!is_callable($call = [$module,$method])) return $def;
+    return $call(...$args);
+  }
+  /**
+   * Register a command for the command dispatcher
+   * @param CommandExecutor|IDispatchable $executor - command executor
+   * @param str $name - name for this command, if $executor is IDispatchable, it can be omitted
+   */
+  public function registerCmd(CommandExecutor $executor, $name = NULL) {
+    if ($this->cmds == NULL) $this->cmds = new CmdDispatcher($this);
+    $this->cmds->register($executor,$name);
+  }
+  /**
+   * Register a sub command
+   * @param ISubDispatchable $executor - subcommand executor
+   */
+  public function registerSubCmd(ISubDispatchable $executor) {
+    if ($this->cmds == NULL) $this->cmds = new CmdDispatcher($this);
+    $cmd = $executor->getMainCmd();
+    $table = $this->cmds->getCommands();
+    if (isset($table[$cmd])) {
+      $sub = $table[$cmd];
+    } else {
+      $sub = new SubCmdDispatcher($this, $cmd);
+      $this->cmds->register($sub,$cmd);
+    }
+    $sub->register($executor);
+  }
+  /**
+   * Get the command dispatcher object
+   * @return IDispatcher
+   */
+  public function getCmds() {
+    return $this->cmds;
+  }
+  
+  /**
+   * Entry point for a command executor.
+   *
+   * @param CommandSender $sender
+   * @param Command       $command
+   * @param string        $subcommand
+   * @param string[]      $args
+   *
+   * @return boolean
+   */
+  public function onCommand(CommandSender $sender, Command $command, $sub, array $args) {
+    if ($this->cmds == NULL) return FALSE;
+    return $this->cmds->onCommand($sender,$command,$sub,$args);
+  }
+
+}
+<?php
+namespace aliuly\mw\common;
+use pocketmine\plugin\PluginBase;
+use pocketmine\utils\Config;
+
+/**
+ * Simple extension to the PocketMine PluginBase class
+ */
+abstract class BasicPlugin extends PluginBase {
+  /**
+   * Save a config section to the plugins' config.yml
+   *
+   * @param str $key - section to save
+   * @param mixed $settings - settings to save
+   */
+  public function cfgSave($key,$settings) {
+    $cfg=new Config($this->getDataFolder()."config.yml",Config::YAML);
+    $dat = $cfg->getAll();
+    $dat[$key] = $settings;
+    $cfg->setAll($dat);
+    $cfg->save();
+  }
+  /**
+   * Gets the contents of an embedded resource on the plugin file.
+   *
+   * @param string $filename
+   * @return string|null
+   */
+  public function getResourceContents($filename){
+    $fp = $this->getResource($filename);
+    if($fp === null) return NULL;
+    $contents = stream_get_contents($fp);
+    fclose($fp);
+    return $contents;
+  }
+}
+<?php
+namespace aliuly\mw\common;
+
+/**
+ * Interface for modular objects, objects that contain modules
+ */
+interface IModular {
+  /**
+   * @param str $name - module to look-up
+   * @return NULL|IModule
+   */
+  public function getModule($name);
+  /**
+   * Get array with modules
+   * @return array
+   */
+  public function getModules();
+  /**
+   * Given some defaults, this will load optional features
+   *
+   * @param array $mods - module definition
+   * @param array $defaults - default options to use for config.yml
+   * @param str $ns - namespace used to search for classes to load
+   * @return array
+   */
+  public function modConfig($mods,$defaults);
+  /**
+   * Add Module
+   * @param str $feature - Feature name
+   * @param str|IModule $obj - Alias or IModule object
+   */
+  public function addModule($feature,$obj);
+  /**
+   * Call a module method
+   * @param str $name - module
+   * @param str $method - method name
+   * @param array $args - arguments to use
+   * @param mixed $def - return value if $name or $method are not found
+   * @return mixed
+   */
+  public function callModule($name,$method,$args = [], $def= NULL);
+}
+
+<?php
+//= api-features
+//: - Translations
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\Singleton;
+use pocketmine\plugin\PluginBase;
+
+/**
+ * Base translation class in the style of **gettext**.
+ *
+ * You can actually use **gettext** tools to process these files.
+ * For example, to create/update a message catalogue use:
+ *
+ * `xgettext --no-wrap [-j] [-o file]`
+ *
+ * Where -j is used to join an existing catalague.
+ * -o file is the output file.
+ *
+ * Example Usage:
+ *
+ * * mc::init($plugin,$plugin->getFile());
+ * * mc::_("string to translate\n");
+ * * mc::_("string to translate %1% %2%\n",$arg1,$arg2);
+ * * mc::n(mc::_("singular form"),mc::_("Plural form"),$count);
+ *
+ */
+class mc {
+  /** @var str - Tagged API for singleton use... i.e. in case of multiple versions of this class */
+  const API = '1.0';
+  /** @var str - Tagged name for singleton use */
+  const INSTANCE_ID = 'mf\common\mc';
+  /** @var str - used to trigger a nag message */
+  const CANARY = "DELETE THIS LINE";
+  /** @var str[] - Translatable strings */
+  protected $txt;
+
+  /** Main translation function
+   *
+   * This translates strings.  The naming of "_" is to make it compatible
+   * with gettext utilities.  The string can contain "%1%", "%2%, etc...
+   * These are inserted from the following arguments.  Use "%%" to insert
+   * a single "%".
+   *
+   * @param str[] $texts - translation table
+   * @param str[] $args - messages
+   * @return str translated string
+   */
+  public static function _(...$args) {
+    $mc = self::get_mc();
+    return $mc->translate($args);
+  }
+  /**
+   * Plural and singular forms.
+   *
+   * @param str $a - Singular form
+   * @param str $b - Plural form
+   * @param int $c - the number to test to select between $a or $b
+   * @return str - Either plural or singular forms depending on the value of $c
+   */
+  public static function n($a,$b,$c) {
+    return $c == 1 ? $a : $b;
+  }
+  /**
+   * Initialize plugin translation texts...
+   *
+   * @param PluginBase $plugin - Plugin object
+   * @param str $path - path to plugin files
+   * @param str $devlang - Developer's native language.  Strings for this language do NOT need to be translated.
+   * @return int - number of loaded strings
+   */
+  public static function init(PluginBase $plugin, $path, $devlang="eng") {
+    $mc = self::get_mc();
+    return $mc->plugin_init($plugin, $path, $devlang);
+  }
+  /**
+   * Return a server wide instance...
+   * @param Server $owner - Server instance
+   */
+  public static function get_mc() {
+    $inst = Singleton::getInstance(self::INSTANCE_ID,self::API);
+    if ($inst === NULL) {
+      $inst = new mc();
+      Singleton::setInstance(self::INSTANCE_ID,$inst,self::API);
+    }
+    return $inst;
+  }
+  
+  public function __construct() {
+    $this->txt = [];
+  }
+  /**
+   * This is the actual implementation for `mc::_`.
+   */
+  public function translate(array $args) {
+    $fmt = array_shift($args);
+    if (isset($this->txt[$fmt])) $fmt = $this->txt[$fmt];
+    if (count($args)) {
+      $vars = [ "%%" => "%" ];
+      $i = 1;
+      foreach ($args as $j) {
+	$vars["%$i%"] = $j;
+	++$i;
+      }
+      $fmt = strtr($fmt,$vars);
+    }
+    return $fmt;
+  }
+
+  /**
+   * Actual implementation for `self::init`
+   */
+  public function plugin_init(PluginBase $plugin,$path,$devlang = "eng") {
+    $lang = $plugin->getServer()->getProperty("settings.language");
+    $cnt = 0;
+    if (file_exists($plugin->getDataFolder()."messages.ini")) {
+      $cnt = self::load($this->txt, $plugin->getDataFolder()."messages.ini");
+      $nagme = isset($this->txt[CANARY]);
+      if (!$nagme) return $cnt;
+      $plugin->getLogger()->error("Selected language \"".$lang."\" NOT available");
+      $loaded = $this->txt[CANARY];
+      unset($this->txt[CANARY]);
+      if ($lang != $loaded) {
+        $plugin->getLogger()->error("Language has been changed since");
+        $plugin->getLogger()->error("\"messages.ini\" was created.");
+        $plugin->getLogger()->error("You should delete this file!");
+	return $cnt;
+      }
+    } else {
+      if ($lang == $devlang) return 0; // Shortcut this!
+      $msgs = $path."resources/messages/".$lang.".ini";
+      if (file_exists($msgs)) return self::load($this->txt, $msgs);
+      $plugin->getLogger()->error("Selected language \"".$lang."\" NOT available");
+      $fp = $plugin->getResource("messages/messages.ini");
+      if ($fp === NULL) return 0;
+      if (!is_dir($plugin->getDataFolder())) mkdir($plugin->getDataFolder());
+      file_put_contents($plugin->getDataFolder()."messages.ini",
+				'"'.CANARY."\"=\"".$lang."\"\n".
+				stream_get_contents($fp));
+      $plugin->getLogger()->error("Creating empty \"messages.ini\"");
+      $plugin->getLogger()->error("You may need to delete this file");
+      $plugin->getLogger()->error("when upgrading this plugin or when");
+      $plugin->getLogger()->error("switching langagues in \"pocketmine.yml\".");
+    }
+    $plugin->getLogger()->error("Please consider translating and submitting the");
+    $plugin->getLogger()->error("translation to the plugin developer!");
+    return $cnt;
+  }
+  /**
+   * load override file
+   * @param str $path - Path to ini file
+   * @return int - loaded strings
+   */
+  public function load_file($path) {
+    return self::load($this->txt,$path);
+  }
+  public function setmsg($msg,$txt) {
+    $this->txt[$msg]= $txt;
+  }
+  /**
+   * Load the specified message catalogue.
+   * Can read .ini or .po files.
+   * @param &str[] - reference to message catalogue
+   * @param str $f - Filename to load
+   * @return array - returns an array with strings, or NULL on error
+   */
+  public static function load(array &$txt, $f) {
+    $potxt = "\n".file_get_contents($f)."\n";
+    $k = 0;
+
+    if (preg_match('/\nmsgid\s/',$potxt))
+      $potxt = preg_replace('/\\\\n"\n"/',"\\n", preg_replace('/\s+""\s*\n\s*"/'," \"", $potxt));
+
+    foreach ([
+	'/\nmsgid "(.+)"\nmsgstr "(.+)"\n/','/^\s*"(.+)"\s*=\s*"(.+)"\s*$/m'
+    ] as $re) {
+      $c = preg_match_all($re,$potxt,$mm);
+      if ($c) {
+	for ($i=0;$i<$c;++$i) {
+	  if ($mm[2][$i] == "") continue;
+	  eval('$a = "'.$mm[1][$i].'";');
+	  eval('$b = "'.$mm[2][$i].'";');
+	  $txt[$a] = $b;
+	  ++$k;
+	}
+	break;
+      }
+    }
+    return $k;
+  }
+
+  /**
+   * Returns a localized string for the gamemode
+   *
+   * @param int mode
+   * @return str
+   */
+  static public function gamemodeStr($mode) {
+    switch ($mode) {
+      case 0: return self::_("Survival");
+      case 1: return self::_("Creative");
+      case 2: return self::_("Adventure");
+      case 3: return self::_("Spectator");
+    }
+    return self::_("%1%-mode",$mode);
+  }
+}
+
+<?php
+namespace aliuly\mw\common;
+
+abstract class Singleton {
+  static public $inst = NULL;
+  static public function initInstance() {
+    if (self::$inst !== NULL) return; 
+    if (!class_exists('\mf\any\common\SingletonContainer',false)) {
+      eval('
+	namespace mf\any\common;
+	  abstract class SingletonContainer {
+	    static public $inst = NULL;
+	    static public function &getContainer() {
+	      if (self::$inst === NULL) self::$inst = [];
+	      return self::$inst;
+	    }
+	  }
+	
+	');
+    }
+    self::$inst = \mf\any\common\SingletonContainer::getContainer();
+  }
+  static public function &getInstance($name,$api = '') {
+    self::initInstance();
+    $key = $name.':'.$api;
+    if (!isset(self::$inst[$key])) self::$inst[$key] = NULL;
+    return self::$inst[$key];
+  }
+  static public function setInstance($name,&$value, $api = '') {
+    self::initInstance();
+    $key = $name.':'.$api;
+    self::$inst[$key] = &$value;
+  }
+}
+<?php
+//= cmd:tp
+//: Teleport to another world
+//> Usage: /mw **tp** _[player]_ _<world>_
+//:
+//: Teleports you to another world.  If _player_ is specified, that
+//: player will be teleported.
+//:
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+
+class MwTp extends MwSubCmd {
+  public function getName() { return "teleport"; }
+  public function getAliases() { return ["tp"]; }
+  public function getHelp() { return mc::_("Teleport across worlds"); }
+  public function getUsage() { return mc::_("[player] <world>"); }
+  public function getPermission() { return "mw.cmd.tp"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) == 0) return FALSE;
+    $player = $sender;
+    if (count($args) > 1) {
+      $player = $this->getPlugin()->getServer()->getPlayer($args[0]);
+      if ($player !== NULL) {
+	if (!Perms::access($sender,"mw.cmd.tp.others")) return TRUE;
+	array_shift($args);
+      } else {
+	// Compatibility with old versions...
+	$player = $this->getPlugin()->getServer()->getPlayer($args[count($args)-1]);
+	if ($player !== NULL) {
+	  if (!Perms::access($sender,"mw.cmd.tp.others")) return TRUE;
+	  array_pop($args);
+	} else {
+	  $player = $sender;
+	}
+      }
+    }
+    if (!Perms::inGame($player)) return TRUE;
+    $wname = implode(" ",$args);
+    if ($player->getLevel() == $this->getPlugin()->getServer()->getLevelByName($wname)) {
+      $sender->sendMessage($sender == $player ?
+			  mc::_("You are already in %1%",$wname) :
+			  mc::_("%1% is already in %2%",$player->getName(),$wname));
+      return TRUE;
+    }
+    if (!$this->getPlugin()->autoLoad($sender,$wname)) {
+      $sender->sendMessage(TextFormat::RED.mc::_("Teleport failed"));
+      return TRUE;
+    }
+    $level = $this->getPlugin()->getServer()->getLevelByName($wname);
+    if ($level === NULL) {
+      $sender->sendMessage(TextFormat::RED.mc::_("Error GetLevelByName %1%",$wname));
+      return TRUE;
+    }
+    if ($sender != $player) {
+      $player->sendMessage(TextFormat::YELLOW.mc::_("Teleporting you to %1% by %2%", $wname, $sender->getName()));
+    } else {
+      $sender->sendMessage(TextFormat::GREEN.mc::_("Teleporting to %1%",$wname));
+    }
+    $player->teleport($level->getSafeSpawn());
+    return TRUE;
+  }
+}
+<?php
+namespace aliuly\manyworlds;
+use aliuly\mw\common\BaseSubCmd;
+
+abstract class MwSubCmd extends BaseSubCmd {
+  public function getMainCmd() { return "manyworlds"; }
+}
+<?php
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\BaseSubCmd;
+
+
+use aliuly\mw\common\BaseModule;
+use aliuly\mw\common\ISubDispatchable;
+use aliuly\mw\common\ModularPlugin;
+
+use pocketmine\command\CommandSender;
+use pocketmine\command\Command;
+
+use aliuly\mw\common\mc;
+
+/**
+ * Base Module that implement a subcommand
+ */
+abstract class BaseSubCmd extends BaseModule implements ISubDispatchable {
+  /** Return aliases
+   *  @return str[]
+   */
+  public function getAliases() {
+    return [];
+  }
+  /** Return permission
+   *  @return str
+   */
+  public function getPermission() {
+    return NULL;
+  }
+  /** Return description
+   *  @return str
+   */
+  public function getHelp() {
+    return mc::_("Generic sub command");
+  }
+  /** Return usage text
+   *  @return str
+   */
+  public function getUsage() {
+    return mc::_("[options]");
+  }
+  public function __construct(ModularPlugin $plugin, array $cfg = []) {
+    parent::__construct($plugin,$cfg);
+    //echo "REGSIGER SUBCMD: ".$this->getMainCmd().", ".$this->getName()."\n";
+    $plugin->registerSubCmd($this);
+  }
+}
+
+<?php
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\IModule;
+use pocketmine\plugin\PluginBase;
+
+/**
+ * Base Module Object implementation
+ */
+class BaseModule implements IModule {
+  /** @var PluginBase - plugin that owns this module */
+  protected $owner = NULL;
+  /** @var array - Configuration for this module */
+  protected $cfg = NULL;
+  /**
+   * Returns the plugin that owns this module
+   */
+  public function getPlugin() {
+    return $this->owner;
+  }
+  public function __construct(PluginBase $plugin, array $cfg = []) {
+    $this->owner = $plugin;
+    $this->cfg = $cfg;
+  }
+}
+
+<?php
+namespace aliuly\mw\common;
+
+/**
+ * Interface for Module objects
+ */
+interface IModule {
+  /**
+   * Returns the plugin that owns this module
+   */
+  public function getPlugin();
+}
+
+<?php
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\IDistpatchable;
+
+/**
+ * Interface for dispatchable objects
+ */
+interface ISubDispatchable extends IDispatchable {
+  /** Return main command's name
+   *  @return str
+   */
+  public function getMainCmd();
+}
+<?php
+namespace aliuly\mw\common;
+
+use pocketmine\command\CommandSender;
+use pocketmine\command\Command;
+use pocketmine\command\CommandExecutor;
+
+/**
+ * Interface for dispatchable command executors
+ */
+interface IDispatchable extends CommandExecutor {
+  /** Return command's name
+   *  @return str
+   */
+  public function getName();
+  /** Return aliases
+   *  @return str[]
+   */
+  public function getAliases();
+  /** Return permission
+   *  @return str
+   */
+  public function getPermission();
+  /** Return description
+   *  @return str|NULL
+   */
+  public function getHelp();
+  /** Return usage text
+   *  @return str
+   */
+  public function getUsage();
+}
+<?php
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\IDispatchable;
+use aliuly\mw\common\IDispatcher;
+use aliuly\mw\common\Cmd;
+
+use pocketmine\plugin\PluginBase;
+use pocketmine\command\CommandExecutor;
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+
+/**
+ * Command dispatcher implementation
+ */
+class CmdDispatcher implements IDispatcher {
+  /** @var PluginBase - plugin that owns this */
+  protected $owner;
+  /** @var array - command table */
+  protected $executors;
+
+  /**
+   * Returns the plugin that owns this module
+   */
+  public function getPlugin() {
+    return $this->owner;
+  }
+  public function __construct(PluginBase $plugin) {
+    $this->owner = $plugin;
+    $this->executors = [];
+  }
+  
+  /**
+   * Register a Dispatchable cmd.
+   *
+   * The $name can be omitted if the $scmd is an IDispatchable instance.
+   * Otherwise, the $name is mandatory.
+   *
+   * @param CommandExecutor $scmd|IDispatchable $scmd - Sub command to register
+   * @param str $name - command name
+   */
+  public function register(CommandExecutor $scmd, $name = NULL) {
+    if ($name == NULL) {
+      if ($scmd instanceof IDispatchable) {
+	$name = $scmd->getName();
+	$yaml = [
+		"description" => $scmd->getHelp(),
+		"usage" => $scmd->getUsage(),
+	];
+	$aliases = $scmd->getAliases();
+	if (is_array($aliases)) {
+	  if (count($aliases)) $yaml["aliases"] = $aliases;
+	} elseif ($aliases) {
+	  $yaml["aliases"] = [$aliases];
+	}
+	if ($scmd->getPermission()) $yaml["permission"] = $scmd->getPermission();
+	Cmd::add($this->getPlugin(), $scmd, $name, $yaml);
+      } else {
+        throw new \RunTimeException("Invalid class ".__FILE__.",".__LINE__);
+        return;
+      }
+    }
+    $this->executors[$name] = $scmd;
+  }
+  /**
+   * Returns an array with dispatchable objects
+   * @return IDispatchable[]
+   */
+  public function getCommands() {
+    return $this->executors;
+  }
+  /**
+   * This is the dispatcher main entry point.
+   */
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (!isset($this->executors[$command->getName()])) return FALSE;
+    return $this->executors[$command->getName()]->onCommand($sender,$command,$label,$args);
+  }
+}
+<?php
+namespace aliuly\mw\common;
+use pocketmine\command\CommandExecutor;
+
+/**
+ * Interface for command dispatchers
+ */
+interface IDispatcher extends CommandExecutor {
+  /* From CommandExecutor: onCommand(CommandSender $sender, Command $command, $label, array $args);
+   * ... this is the dispatcher */
+  
+  /**
+   * Register a Dispatchable cmd
+   * @param CommandExecutor $scmd|IDispatchable $scmd - Sub command to register
+   * @param str $name - command name
+   */
+  public function register(CommandExecutor $scmd, $name = NULL);
+  /**
+   * Returns an array with dispatchable objects
+   * @return IDispatchable[]
+   */
+  public function getCommands();
+}
+<?php
+//= api-features
+//: - Sub command support
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\IDispatcher;
+use aliuly\mw\common\IDispatchable;
+use aliuly\mw\common\Cmd;
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use pocketmine\plugin\PluginBase;
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\command\CommandExecutor;
+use pocketmine\utils\TextFormat;
+
+/**
+ * Bae Module Object implementation
+ */
+class SubCmdDispatcher implements IDispatcher {
+  /** @var PluginBase - plugin that owns this */
+  protected $owner = NULL;
+  /** @var array - sub command table */
+  protected $executors = NULL;
+  /** @var array - command map */
+  protected $cmdmap = NULL;
+  /** @var str - command name */
+  protected $name;
+  /**
+   * Returns the plugin that owns this module
+   */
+  public function getPlugin() {
+    return $this->owner;
+  }
+  /**
+   * @param PluginBase $plugin - owner of this command
+   * @param str $name - Main command name
+   * @param array $yaml - Configuration for command (see Cmd::add)
+   */
+  public function __construct(PluginBase $plugin, $name, $yaml = []) {
+    $this->owner = $plugin;
+    $this->executors = [];
+    $this->cmdmap = [];
+    $this->name = $name;
+    /* Figure out the current situation... */
+    $current = $plugin->getServer()->getCommandMap()->getCommand($name);
+    if ($current) return;
+    
+    if (!isset($yaml["description"])) $yaml["description"] = mc::_("%1% command set", $name);
+    if (!isset($yaml["usage"])) $yaml["usage"] = mc::_("Usage: %1% <subcmd> [options]", $name);
+  
+    Cmd::add($plugin, $this, $name, $yaml);
+  }
+  /**
+   * This method is called when no sub-command is specified
+   *
+   * @param CommandSender $sender - command sender
+   */
+  public function defaultSub(CommandSender $sender) {
+    $sender->sendMessage(TextFormat::RED.mc::_("No sub command specified"));
+    return TRUE;
+  }
+  /**
+   * This method is called when a unknown sub-command is used
+   *
+   * @param CommandSender $sender - command sender
+   * @param str $op - Sub command requested
+   */
+  public function notfound(CommandSender $sender, $op) {
+    $sender->sendMessage(TextFormat::RED.mc::_("Sub command \"%1%\" not recognized",$op));
+    return TRUE;
+  }
+  /**
+   * Main entry point
+   *
+   * @param CommandSender $sender - command sender
+   * @param Command $command - command object
+   * @param str $label
+   * @param str[] $args - command line arguments
+   */
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) == 0) return $this->defaultSub($sender);
+    $subcmd = array_shift($args);
+    if (!isset($this->cmdmap[$subcmd])) return $this->notfound($sender,$subcmd);
+    $subcmd = $this->cmdmap[$subcmd];
+    $execer = $this->executors[$subcmd];
+    $perm = $execer->getPermission();
+    if ($perm && !Perms::access($sender, $perm)) return TRUE;
+    return $this->executors[$subcmd]->onCommand($sender,$command,$subcmd, $args);
+  }
+  /**
+   * Register a Dispatchable cmd
+   * @param IDispatchable $scmd - Sub command to register
+   * @param str $name - sub command to register (if $scmd is not IDispatchable)
+   */
+  public function register(CommandExecutor $scmd, $name = NULL) {
+    if ($name == NULL) {
+      if ($scmd instanceof IDispatchable) {
+	$name = $scmd->getName();
+	$this->executors[$name] = $scmd;
+	$this->cmdmap[$name] = $name;
+	$aliases = $scmd->getAliases();
+	if (!is_array($aliases)) $aliases = [$aliases];
+	foreach ($aliases as $alias) {
+	  $this->cmdmap[$alias] = $name;
+	}
+      } else {
+        throw new \RunTimeException("Invalid class ".__FILE__.",".__LINE__);
+      }
+    } else {
+      $this->executors[$name] = $scmd;
+      $this->cmdmap[$name] = $name;
+    }
+  }
+  /**
+   * Returns an array with dispatchable objects
+   * @return IDispatchable[]
+   */
+  public function getCommands() {
+    return $this->executors;
+  }
+}
+<?php
+//= cmd:ls
+//: Provide world information
+//> Usage: /mw **ls** _[world]_
+//:
+//: If _world_ is not specified, it will list available worlds.
+//: Otherwise, details for _world_ will be provided.
+//:
+namespace aliuly\manyworlds;
+
+use pocketmine\command\CommandSender;
+use pocketmine\command\Command;
+use pocketmine\utils\TextFormat;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+use aliuly\mw\common\Pager;
+
+use aliuly\manyworlds\MwSubCmd;
+
+class MwLs extends MwSubCmd {
+  public function getName() { return "list"; }
+  public function getAliases() { return ["ls","info"]; }
+  public function getHelp() { return mc::_("List world information"); }
+  public function getUsage() { return mc::_("[world]"); }
+  public function getPermission() { return "mw.cmd.ls"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    $pageNumber = Pager::getPageNumber($args);
+    if (count($args) == 0) {
+      $txt = $this->mwWorldList($sender);
+    } else {
+      $wname = implode(" ",$args);
+      $txt = $this->mwWorldDetails($sender,$wname);
+      if ($txt === NULL) {
+        $sender->sendMessage(mc::_("[MW] error examining %1%", $wname));
+	return TRUE;
+      }
+    }
+    return Pager::paginateText($sender,$pageNumber,$txt);
+  }
+  private function mwWorldList(CommandSender $sender) {
+    $dir = $this->getPlugin()->getServer()->getDataPath(). "worlds";
+    if (!is_dir($dir)) {
+      $sender->sendMessage(mc::_("[MW] Missing path %1%",$dir));
+      return NULL;
+    }
+    $txt = ["HDR"];
+
+    $auto = $this->getPlugin()->getServer()->getProperty("worlds",[]);
+    $default = $this->getPlugin()->getServer()->getDefaultLevel();
+    if ($default) $default = $default->getName();
+
+    $count = 0;
+    $dh = opendir($dir);
+    if (!$dh) return NULL;
+    while (($file = readdir($dh)) !== FALSE) {
+      if ($file == '.' || $file == '..') continue;
+      if (!$this->getPlugin()->getServer()->isLevelGenerated($file)) continue;
+      $attrs = [];
+      ++$count;
+      if (isset($auto[$file])) $attrs[] = mc::_("auto");
+      if ($default == $file) $attrs[]=mc::_("default");
+      if ($this->getPlugin()->getServer()->isLevelLoaded($file)) {
+	$attrs[] = mc::_("loaded");
+	$np = count($this->getPlugin()->getServer()->getLevelByName($file)->getPlayers());
+	if ($np) $attrs[] = mc::_("players:%1%",$np);
+      }
+      $ln = "- $file";
+      if (count($attrs)) $ln .= TextFormat::AQUA." (".implode(",",$attrs).")";
+      $txt[] = $ln;
+    }
+    closedir($dh);
+    $txt[0] = mc::_("Worlds: %1%",$count);
+    return $txt;
+  }
+  private function mwWorldDetails(CommandSender $sender,$world) {
+    $txt = [];
+    if ($this->getPlugin()->getServer()->isLevelLoaded($world)) {
+      $unload = FALSE;
+    } else {
+      if (!$this->getPlugin()->autoLoad($sender,$world)) {
+	$sender->sendMessage(TextFormat::RED.mc::_("Error getting %1%",$world));
+	return NULL;
+      }
+      $unload = TRUE;
+    }
+    $level = $this->getPlugin()->getServer()->getLevelByName($world);
+
+    //==== provider
+    $provider = $level->getProvider();
+    $txt[] = mc::_("Info for %1%",$world);
+    $txt[] = TextFormat::AQUA.mc::_("Provider: ").TextFormat::WHITE. $provider::getProviderName();
+    $txt[] = TextFormat::AQUA.mc::_("Path: ").TextFormat::WHITE.$provider->getPath();
+    $txt[] = TextFormat::AQUA.mc::_("Name: ").TextFormat::WHITE.$provider->getName();
+    $txt[] = TextFormat::AQUA.mc::_("Seed: ").TextFormat::WHITE.$provider->getSeed();
+    $txt[] = TextFormat::AQUA.mc::_("Generator: ").TextFormat::WHITE.$provider->getGenerator();
+    $gopts = $provider->getGeneratorOptions();
+    if ($gopts["preset"] != "")
+      $txt[] = TextFormat::AQUA.mc::_("Generator Presets: ").TextFormat::WHITE.$gopts["preset"];
+
+    $spawn = $provider->getSpawn();
+    $txt[] = TextFormat::AQUA.mc::_("Spawn: ").TextFormat::WHITE.$spawn->getX().",".$spawn->getY().",".$spawn->getZ();
+    $plst = $level->getPlayers();
+    $lst = "";
+    if (count($plst)) {
+      foreach ($plst as $p) {
+	$lst .= (strlen($lst) ? ", " : "").$p->getName();
+      }
+    }
+    $txt[] = TextFormat::AQUA.mc::_("Players(%1%):",count($plst)).TextFormat::WHITE.$lst;
+
+    // Check for warnings...
+    if ($provider->getName() != $world) {
+      $txt[] = TextFormat::RED.mc::_("Folder Name and Level.Dat names do NOT match");
+      $txt[] = TextFormat::RED.mc::_("This can cause intermitent problems");
+      if($sender->hasPermission("mw.cmd.lvdat")) {
+	$txt[] = TextFormat::RED.mc::_("Use: ");
+	$txt[] = TextFormat::GREEN.mc::_("> /mw fixname %1%",$world);
+	$txt[] = TextFormat::RED.mc::_("to fix this issue");
+      }
+    }
+
+    if ($unload) $this->getPlugin()->getServer()->unloadLevel($level);
+
+    return $txt;
+  }
+
+}
+<?php
+//= cmd:create
+//: Create a new world
+//> Usage: /mw **create** _<world>_ _[seed]_ _[generator]_ _[preset]_
+//:
+//: Creates a world named _world_.  You can optionally specify a _seed_
+//: as number, the generator (_flat_ or _normal_) and a _preset_ string.
+//:
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+use pocketmine\level\generator\Generator;
+
+class MwCreate extends MwSubCmd {
+  public function getName() { return "create"; }
+  public function getAliases() { return ["new"]; }
+  public function getHelp() { return mc::_("Creates a new world"); }
+  public function getUsage() { return mc::_("<world> [seed] [generator] [preset]"); }
+  public function getPermission() { return "mw.cmd.world.create"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) < 1 || count($args)>4) return FALSE;
+    $world = array_shift($args);
+    if ($this->getPlugin()->getServer()->isLevelGenerated($world)) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] A world named %1% already exists",$world));
+      return TRUE;
+    }
+    $seed = NULL;
+    $generator = NULL;
+    $opts = [];
+    if (isset($args[0])) $seed = intval($args[0]);
+    if (isset($args[1])) {
+      $generator = Generator::getGenerator($args[1]);
+      if (strtolower($args[1]) != Generator::getGeneratorName($generator)){
+	$sender->sendMessage(TextFormat::RED.mc::_("[MW] Unknown generator %1%",$args[1]));
+	return TRUE;
+      }
+      $sender->sendMessage(TextFormat::GREEN.mc::_("[MW] Using %1%",Generator::getGeneratorName($generator)));
+    }
+    if(isset($args[2])) $opts = ["preset" => $args[2] ];
+    $this->getPlugin()->getServer()->broadcastMessage(mc::_("[MW] Creating level %1%... (Expect Lag)", $world));
+    $this->getPlugin()->getServer()->generateLevel($world,$seed,$generator,$opts);
+    $this->getPlugin()->getServer()->loadLevel($world);
+    return TRUE;
+  }
+}
+<?php
+//= cmd:generators
+//: List available world generators
+//> Usage: /mw **generators**
+//:
+//: List registered world generators.
+//:
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+use pocketmine\level\generator\Generator;
+
+class MwGenLst extends MwSubCmd {
+  public function getName() { return "generators"; }
+  public function getAliases() { return ["gen","genls"]; }
+  public function getHelp() { return mc::_("List world generators"); }
+  public function getUsage() { return ""; }
+  public function getPermission() { return "mw.cmd.world.create"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) != 0) return FALSE;
+    $sender->sendMessage(implode(", ",Generator::getGeneratorList()));
+    return TRUE;
+  }
+}
+<?php
+//= cmd:load
+//: Loads a world
+//> Usage: /mw **load** _<world|--all>_
+//:
+//: Loads _world_ directly.  Use _--all_ to load **all** worlds.
+//:
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+
+class MwLoader extends MwSubCmd {
+  public function getName() { return "load"; }
+  public function getAliases() { return ["ld"]; }
+  public function getHelp() { return mc::_("Load worlds"); }
+  public function getUsage() { return mc::_("<world|--all>"); }
+  public function getPermission() { return "mw.cmd.world.load"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) == 0) return FALSE;
+    $wname = implode(" ",$args);
+    if ($wname == "--all") {
+      $wlst = [];
+      foreach (glob($this->getPlugin()->getServer()->getDataPath(). "worlds/*") as $f) {
+	$world = basename($f);
+	if ($this->getPlugin()->getServer()->isLevelLoaded($world)) continue;
+	if (!$this->getPlugin()->getServer()->isLevelGenerated($world)) continue;
+	$wlst[] = $world;
+      }
+      if (count($wlst) == 0) {
+	$sender->sendMessage(TextFormat::RED.mc::_("[MW] No levels to load"));
+	return TRUE;
+      }
+      $sender->sendMessage(TextFormat::AQUA.mc::n(
+		      mc::_("[MW] Loading one level"),
+		      mc::_("[MW] Loading ALL %1% levels",count($wlst)),
+		      count($wlst)));
+    } else {
+      if ($this->getPlugin()->getServer()->isLevelLoaded($wname)) {
+	$sender->sendMessage(TextFormat::RED.mc::_("[MW] %1% already loaded",$wname));
+	return TRUE;
+      }
+      if (!$this->getPlugin()->getServer()->isLevelGenerated($wname)) {
+	$sender->sendMessage(TextFormat::RED.mc::_("[MW] %1% does not exists",$wname));
+	return TRUE;
+      }
+      $wlst = [ $wname ];
+    }
+    foreach ($wlst as $world) {
+      if (!$this->getPlugin()->autoLoad($sender,$world)) {
+	$sender->sendMessage(TextFormat::RED.mc::_("[MW] Unable to load %1%",$world));
+      }
+    }
+    return TRUE;
+  }
+}
+<?php
+//= cmd:unloads
+//: Unloads world
+//> Usage: /mw **unload** _[-f]_  _<world>_
+//:
+//: Unloads _world_.  Use _-f_ to force unloads.
+//:
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+
+class MwUnload extends MwSubCmd {
+  public function getName() { return "unload"; }
+  public function getAliases() { return []; }
+  public function getHelp() { return mc::_("Attempt to unload worlds"); }
+  public function getUsage() { return mc::_("[-f] <world>"); }
+  public function getPermission() { return "mw.cmd.world.load"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) == 0) return FALSE;
+    $force = FALSE;
+    if ($args[0] == "-f") {
+      $force = TRUE;
+      array_shift($args);
+      if (count($args) == 0) return FALSE;
+    }
+    $wname = implode(" ",$args);
+
+    if (!$this->getPlugin()->getServer()->isLevelLoaded($wname)) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] %1% is not loaded.",$wname));
+      return TRUE;
+    }
+    $level = $this->getPlugin()->getServer()->getLevelByName($wname);
+    if ($level === NULL) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] Unable to get %1%",$wname));
+      return TRUE;
+    }
+    if ($level === $this->getPlugin()->getServer()->getDefaultLevel()) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] Unable unload default level %1%",$wname));
+      return TRUE;
+    }
+    if (!$this->getPlugin()->getServer()->unloadLevel($level,$force)) {
+      if ($force)
+	  $sender->sendMessage(TextFormat::RED.mc::_("[MW] Unable to unload %1%",$wname));
+      else
+	$sender->sendMessage(TextFormat::RED.mc::_("[MW] Unable to unload %1%.  Try -f",$wname));
+    } else {
+      $sender->sendMessage(TextFormat::GREEN.mc::_("[MW] %1% unloaded.",$wname));
+    }
+    return TRUE;
+  }
+}
+<?php
+//= cmd:default
+//: Sets the default world
+//> Usage: /mw **default** _<world>_
+//:
+//: Changes the default world for the server.
+//:
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+
+class MwDefault extends MwSubCmd {
+  public function getName() { return "default"; }
+  public function getAliases() { return ["def"]; }
+  public function getHelp() { return mc::_("Sets the default world"); }
+  public function getUsage() { return mc::_("<world>"); }
+  public function getPermission() { return "mw.cmd.default"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) == 0) return FALSE;
+    $wname =implode(" ",$args);
+    $old = $this->getPlugin()->getServer()->getConfigString("level-name");
+    if ($old == $wname) {
+      $sender->sendMessage(TextFormat::RED.mc::_("No change"));
+      return TRUE;
+    }
+    if (!$this->getPlugin()->autoLoad($sender,$wname)) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] Unable to load %1%",$wname));
+      $sender->sendMessage(TextFormat::RED.mc::_("Change failed!"));
+      return TRUE;
+    }
+    $level = $this->getPlugin()->getServer()->getLevelByName($wname);
+    if ($level === NULL) {
+      $c->sendMessage(TextFormat::RED.mc::_("Error GetLevelByName %1%"));
+      return TRUE;
+    }
+    $this->getPlugin()->getServer()->setConfigString("level-name",$wname);
+    $this->getPlugin()->getServer()->setDefaultLevel($level);
+    $sender->sendMessage(TextFormat::BLUE.mc::_("Default world changed to %1%",$wname));
+    return TRUE;
+  }
+}
+<?php
+//= cmd:lvdat
+//: Show/modify `level.dat` variables
+//> Usage: /mw **lvdat** _<world>_ _[attr=value]_
+//:
+//: Change directly some **level.dat** values/attributes.  Supported
+//: attributes:
+//:
+//: - spawn=x,y,z : Sets spawn point
+//: - seed=randomseed : seed used for terrain generation
+//: - name=string : Level name
+//: - generator=flat|normal : Terrain generator
+//: - preset=string : Presets string.
+//:
+
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+
+use pocketmine\level\generator\Generator;
+use pocketmine\nbt\NBT;
+use pocketmine\nbt\tag\StringTag;
+use pocketmine\math\Vector3;
+//use pocketmine\nbt\tag\IntTag;
+//use pocketmine\nbt\tag\LongTag;
+//use pocketmine\nbt\tag\CompoundTag;
+
+class MwLvDat extends MwSubCmd {
+  public function getName() { return "lvdat"; }
+  public function getAliases() { return ["lv"]; }
+  public function getHelp() { return mc::_("Change level.dat values"); }
+  public function getUsage() { return mc::_("<world> [attr=value]"); }
+  public function getPermission() { return "mw.cmd.lvdat"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    if (count($args) == 0) return FALSE;
+    $world = array_shift($args);
+    if(!$this->getPlugin()->autoLoad($sender,$world)) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] %1% is not loaded!",$world));
+      return TRUE;
+    }
+    $level = $this->getPlugin()->getServer()->getLevelByName($world);
+    if (!$level) {
+      $sender->sendMessage(TextFormat::RED.mc::_("[MW] Unexpected error"));
+      return TRUE;
+    }
+    //==== provider
+    $provider = $level->getProvider();
+    $changed = FALSE; $unload = FALSE;
+    foreach ($args as $kv) {
+      $kv = explode("=",$kv,2);
+      if (count($kv) != 2) {
+	$sender->sendMessage(mc::_("Invalid element: %1%, ignored",$kv[0]));
+	continue;
+      }
+      list($k,$v) = $kv;
+      switch (strtolower($k)) {
+	case "spawn":
+	  $pos = explode(",",$v);
+	  if (count($pos)!=3) {
+	    $sender->sendMessage(mc::_("Invalid spawn location: %1%",implode(",",$pos)));
+	    continue;
+	  }
+	  list($x,$y,$z) = $pos;
+	  $cpos = $provider->getSpawn();
+	  if (($x=intval($x)) == $cpos->getX() &&
+		   ($y=intval($y)) == $cpos->getY() &&
+		   ($z=intval($z)) == $cpos->getZ()) {
+	    $sender->sendMessage(mc::_("Spawn location is unchanged"));
+	    continue;
+	  }
+	  $changed = TRUE;
+	  $provider->setSpawn(new Vector3($x,$y,$z));
+	  break;
+	case "seed":
+	  if ($provider->getSeed() == intval($v)) {
+	    $sender->sendMessage(mc::_("Seed unchanged"));
+	    continue;
+	  }
+	  $changed = TRUE; $unload = TRUE;
+	  $provider->setSeed($v);
+	  break;
+	case "name": // LevelName String
+	  if ($provider->getName() == $v) {
+	    $c->sendMessage(mc::_("Name unchanged"));
+	    continue;
+	  }
+	  $changed = TRUE; $unload = TRUE;
+	  $provider->getLevelData()->LevelName = new StringTag("LevelName",$v);
+	  break;
+	case "generator":	// generatorName(String)
+	  if ($provider->getLevelData()->generatorName == $v) {
+	    $sender->sendMessage(mc::_("Generator unchanged"));
+	    continue;
+	  }
+	  $changed=TRUE; $unload=TRUE;
+	  $provider->getLevelData()->generatorName=new StringTag("generatorName",$v);
+	  break;
+	case "preset":	// StringTag("generatorOptions");
+	  if ($provider->getLevelData()->generatorOptions == $v) {
+	    $sender->sendMessage(mc::_("Preset unchanged"));
+	    continue;
+	  }
+	  $changed=TRUE; $unload=TRUE;
+	  $provider->getLevelData()->generatorOptions =new StringTag("generatorOptions",$v);
+	  break;
+	default:
+	  $sender->sendMessage(mc::_("Unknown key %1%, ignored",$k));
+	  continue;
+      }
+    }
+    if ($changed) {
+      $sender->sendMessage(mc::_("Updating level.dat for %1%",$world));
+      $provider->saveLevelData();
+      if ($unload) $sender->sendMessage(TextFormat::RED.mc::_("CHANGES WILL NOT TAKE EFFECT UNTIL UNLOAD"));
+    } else {
+      $sender->sendMessage(mc::_("Nothing happens"));
+    }
+    
+    $sender->sendMessage(TextFormat::AQUA.mc::_("Name:      %1%", TextFormat::WHITE.$provider->getName()));
+    $sp = $provider->getSpawn();
+    $sender->sendMessage(TextFormat::AQUA.mc::_("Spawn:    %1%(%2%,%3%,%4%)",TextFormat::WHITE,$sp->getX(),$sp->getY(),$sp->getZ()));
+    $sender->sendMessage(TextFormat::AQUA.mc::_("Generator: %1%", TextFormat::WHITE.$provider->getLevelData()->generatorName));
+    $sender->sendMessage(TextFormat::AQUA.mc::_("Seed:      %1%", TextFormat::WHITE.$provider->getSeed()));
+    $sender->sendMessage(TextFormat::AQUA.mc::_("Preset:    %1%", TextFormat::WHITE.$provider->getLevelData()->generatorOptions));
+
+    return TRUE;
+  }
+}
+
+<?php
+//= cmd:fixname
+//: fixes name mismatches
+//> Usage: /mw **fixname** _<world>_
+//:
+//: Fixes a world's **level.dat** file so that the name matches the
+//: folder name.
+//:
+
+namespace aliuly\manyworlds;
+
+use aliuly\mw\common\mc;
+use aliuly\mw\common\Perms;
+
+use aliuly\manyworlds\MwSubCmd;
+use aliuly\manyworlds\MwLvDat;
+
+use pocketmine\command\Command;
+use pocketmine\command\CommandSender;
+use pocketmine\utils\TextFormat;
+
+class MwFixName extends MwSubCmd {
+  public function getName() { return "fixname"; }
+  public function getAliases() { return ["fix"]; }
+  public function getHelp() { return mc::_("Fixes world name"); }
+  public function getUsage() { return mc::_("<world>"); }
+  public function getPermission() { return "mw.cmd.lvdat"; }
+
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    $world = implode(" ",$args);
+    $sender->sendMessage(TextFormat::AQUA.mc::_("Running /mw lvdat %1% name=%1%",$world));
+    $args = [ $world, "name=$world" ];
+    return $this->getPlugin()->callModule(MwLvDat::class, "onCommand",
+				  [ $sender, $command, $label, $args ]);
+  }
+}
+<?php
+namespace aliuly\mw\common;
+
+use aliuly\mw\common\IModule;
+use aliuly\mw\common\ModularPlugin;
+use aliuly\mw\common\Pager;
+
+use pocketmine\command\CommandSender;
+use pocketmine\command\Command;
+use pocketmine\command\CommandExecutor;
+use pocketmine\utils\TextFormat;
+
+/**
+ * Implements sub command help
+ */
+class HelpSubCmd extends BaseSubCmd {
+  /** @var str - main command name */
+  protected $maincmd;  
+  /** @var SubCmdDispatcher - dispatcher object */
+  protected $dispatcher;
+
+  public function __construct(ModularPlugin $plugin, $mcmd) {
+    $this->maincmd = $mcmd;
+    parent::__construct($plugin,[]);
+    $cmd1 = $plugin->getCmds();
+    $tab = $cmd1->getCommands();
+    $this->dispatcher = $tab[$mcmd];
+  }
+  public function getMainCmd() { return $this->maincmd; }
+  public function getName() { return "help"; }
+  public function getAliases() { return ["hlp","-h","-?"]; }
+  public function getHelp() {
+    return mc::_("Show help for %1%", $this->getMainCmd());
+  }
+  /** Return usage text
+   *  @return str
+   */
+  public function getUsage() {
+    return mc::_("%1% %2% [subcmd] [page]",$this->getMainCmd(),$this->getName());
+  }
+  /**
+   * Main entry point
+   */
+  public function onCommand(CommandSender $sender, Command $command, $label, array $args) {
+    $pageNumber = Pager::getPageNumber($args);
+    $txt = [];
+    if (count($args) == 0) {
+      // List of commands...
+      $txt[] = [ mc::_("Available"), mc::_("Sub-commands for %1%", $this->getMainCmd()) ];
+      $cmds = $this->dispatcher->getCommands();
+      ksort($cmds);
+      foreach ($cmds as $i=>$j) {
+        $ln = [ $i , $j->getHelp() ];
+	$aliases = $j->getAliases();
+	if (!is_array($aliases)) $aliases = [ $aliases ];
+	foreach ($aliases as $k) {
+	  $ln[0] .= "|".$k;
+	}
+	$txt[] = $ln;
+      }
+      return Pager::paginateTable($sender,$pageNumber, $txt);
+    }
+    if (count($args) == 1) {
+      // Look-up command
+      foreach ($this->dispatcher->getCommands() as $i => $j) {
+        if ($i != $args[0]) {
+	  $aliases = $j->getAliases();
+	  if (!is_array($aliases)) $aliases = [ $aliases ];
+	  if (!in_array($args[0],$aliases)) continue;
+	}
+	// Found it!
+	$txt[] = mc::_("Help for %1%", $this->getMainCmd());
+	$txt[] = sprintf("%s %s: %s", $this->getMainCmd(), $j->getName(), $j->getHelp());
+	$txt[] = sprintf("%s %s %s", $this->getMainCmd(), $j->getName(), $j->getUsage());
+	return Pager::paginateText($sender, $pageNumber, $txt);
+      }
+      // Not found
+      $sender->sendMessage(TextFormat::RED.mc::_("Command %1% does not exist",$args[1]));
+      return TRUE;
+    }
+    $sender->sendMessage(TextFormat::RED.mc::_("Usage: %1%", $this->getUsage()));
+    return TRUE;
+  }
+
+}
+<?php
+//= api-features
+//: - Permission checks and utilities
+namespace aliuly\mw\common;
+use aliuly\mw\common\mc;
+
+use pocketmine\Player;
+use pocketmine\command\CommandSender;
+use pocketmine\plugin\Plugin;
+use pocketmine\permission\Permission;
+
+abstract class Perms {
+  /**
+   * Check's player or sender's permissions and shows a message if appropriate
+   *
+   * @param CommandSender $sender
+   * @param str $permission
+   * @param bool $msg If false, no message is shown
+   * @return bool
+   */
+  static public function access(CommandSender $sender, $permission,$msg=true) {
+    if($sender->hasPermission($permission)) return TRUE;
+    if ($msg) $sender->sendMessage(mc::_("You do not have permission to do that."));
+    return FALSE;
+  }
+  /**
+   * Check's if $sender is a player in game
+   *
+   * @param CommandSender $sender
+   * @param bool $msg If false, no message is shown
+   * @return bool
+   */
+  static public function inGame(CommandSender $sender,$msg = true) {
+    if ($sender instanceof Player) return TRUE;
+    if ($msg) $sender->sendMessage(mc::_("You can only do this in-game"));
+    return FALSE;
+  }
+  /**
+   * Register a permission on the fly...
+   * @param Plugin $plugin - owning plugin
+   * @param str $name - permission name
+   * @param str $desc - permission description
+   * @param str $default - one of true,false,op,notop
+   */
+  static public function add(Plugin $plugin, $name, $desc, $default) {
+    $perm = new Permission($name,$desc,$default);
+    $plugin->getServer()->getPluginManager()->addPermission($perm);
+  }
+
+}
+
+<?php
+//= api-features
+//: - Paginated output
+namespace aliuly\mw\common;
+use aliuly\mw\common\mc;
+use pocketmine\command\CommandSender;
+use pocketmine\command\ConsoleCommandSender;
+use pocketmine\utils\TextFormat;
+
+abstract class Pager {
+  /** @var int - Do not paginate output */
+  const DONT_PAGINATE = 0;
+  /** @var int - Automatically determine page height */
+  const AUTO_PAGINATE = -1;
+  /** @var int - The default page length */
+  const DEFAULT_PAGEHEIGHT = 5;
+  /**
+   * Use for paginaged output implementation.
+   * This gets the player specified page number that we want to Display
+   *
+   * @param str[] $args - Passed arguments
+   * @return int page number
+   */
+  static public function getPageNumber(array &$args) {
+    $pageNumber = 1;
+    if (count($args) && is_numeric($args[count($args)-1])) {
+      $pageNumber = (int)array_pop($args);
+      if($pageNumber <= 0) $pageNumber = 1;
+    }
+    return $pageNumber;
+  }
+  /**
+   * Use for paginaged output implementation.
+   * Shows a bunch of line in paginated output.
+   *
+   * @param CommandSender $sender - entity that we need to display text to
+   * @param int $pageNumber - page that we need to display
+   * @param str[] $txt - Array containing one element per output line
+   * @param int $pageHeight - number of lines to display in a page, 0 unlimited, -1 autoconfig
+   * @return bool true
+   */
+  static public function paginateText(CommandSender $sender,$pageNumber,array $txt, $pageHeight = self::AUTO_PAGINATE) {
+    $hdr = array_shift($txt);
+    $lineCount = count($txt);
+    if ($pageHeight == self::AUTO_PAGINATE)
+      $pageHeight = ($sender instanceof ConsoleCommandSender) ? self::DONT_PAGINATE : self::DEFAULT_PAGEHEIGHT;
+    if ($pageHeight == self::DONT_PAGINATE) {
+      $sender->sendMessage( TextFormat::GREEN.$hdr.TextFormat::RESET);
+      foreach ($txt as $ln) $sender->sendMessage($ln);
+      return TRUE;
+    }
+
+    $pageCount = intval($lineCount/$pageHeight) + ($lineCount % $pageHeight ? 1 : 0);
+    $hdr = TextFormat::GREEN.$hdr. TextFormat::RESET;
+    if ($pageNumber > $pageCount) {
+      $sender->sendMessage($hdr);
+      $sender->sendMessage(TextFormat::RED.mc::_("Only %1% pages available",$pageCount).TextFormat::RESET);
+      return TRUE;
+    }
+    $hdr .= TextFormat::RED.mc::_(" (%1% of %2%)", $pageNumber, $pageCount);
+    $sender->sendMessage($hdr);
+    for ($ln = ($pageNumber-1)*$pageHeight;$ln < $lineCount && $pageHeight--;++$ln) {
+      $sender->sendMessage($txt[$ln]);
+    }
+    return TRUE;
+  }
+  /**
+   * Use for paginaged output implementation.
+   * Formats and paginates a table
+   *
+   * @param CommandSender $sender - entity that we need to display text to
+   * @param int $pageNumber - page that we need to display
+   * @param str[][] $txt - Array containing one element per cell
+   * @param int $pageHeight - number of lines to display in a page
+   * @return bool true
+   */
+  static public function paginateTable(CommandSender $sender,$pageNumber,array $tab, $pageHeight = self::AUTO_PAGINATE) {
+    $cols = [];
+    for($i=0;$i < count($tab[0]);$i++) $cols[$i] = strlen($tab[0][$i]);
+    foreach ($tab as $row) {
+      for($i=0;$i < count($row);$i++) {
+	if (($l=strlen($row[$i])) > $cols[$i]) $cols[$i] = $l;
+      }
+    }
+    $txt = [];
+    $fmt = "";
+    foreach ($cols as $c) {
+      if (strlen($fmt) > 0) $fmt .= " ";
+      $fmt .= "%-".$c."s";
+    }
+
+
+    
+    foreach ($tab as $row) {
+
+
+      $txt[] = sprintf($fmt,...$row);
+    }
+    return self::paginateText($sender,$pageNumber,$txt,$pageHeight);
+  }
+}

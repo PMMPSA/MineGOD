@@ -1,0 +1,15 @@
+---
+banitem:
+  259: Flint and Steel
+  290: Wooden Hoe
+  292: Iron Hoe
+  294: Gold Hoe
+  291: Stone Hoe
+  46: TNT
+  383: Spawn Egg
+  325: Bucket
+  8: Water
+protect: lock
+bancmds:
+  /tp: /tp
+...

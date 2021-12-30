@@ -1,0 +1,27 @@
+# SimpleAuth 1.4.0 language file
+
+join:
+ message1: "           §a-=§6|§c♦§6| §eM§ai§bn§de§aG§6O§eD §6|§c♦§6|§a=-"
+ message2: "§e-------------------------\n§f• §aĐăng Nhập §dHoặc §aĐăng Kí §dĐể Chơi Bạn Nhé"
+ register: "§f• §aĐăng Kí §dBằng Cách Nhập Chính Xác 2 Lần Mật Khẩu Bạn Muốn\n§f• §eĐổi Mật Khẩu Bằng Cách §a/chpwd <Mật Khẩu Cũ> §eVà Làm Theo Hướng Dẫn\n§f• §bVote Cho Server Tại §6Bit.do/minegod2020§b\n-------------------------"
+ login: "§f• §aĐăng Nhập §dBằng Cách Nhập Trực Tiếp Mật Khẩu Của Bạn\n§f• §eĐổi Mật Khẩu Bằng Cách §a/chpwd <Mật Khẩu Cũ> §eVà Làm Theo Hướng Dẫn\n§f• §bVote Cho Server Tại §6bit.do/minegod2020"
+ popup: "§e-=§c♦§e=- §aBạn Chưa Sẵn Sàng Để Chơi §e-=§c♦§e=-"
+
+register:
+ usage: "Reg"
+ description: "Reg"
+ permission: "You do not have permission to use the register command!"
+ error:
+  password: "§f• §cMật khẩu Quá Ngắn, Mật khẩu Phải Hơn §b8 §dChữ §Choặc §dSố"
+  registered: "§f• §cĐăng Kí không Thành Công"
+  general: "Error during authentication."
+
+login:
+ usage: "Login"
+ description: "Login"
+ permission: "You do not have permission to use the login command!"
+ success: "§f• §eĐăng Nhập Thành công"
+ error:
+  password: "§f• §cMật Khẩu Không Hợp Lệ, Nếu Không Phải Tài Khoản Của Bạn Xin Vui Lòng Đổi Tên Ở Phần Cài Đặt"
+  registered: "§f• §cTài khoản Này Chưa Được Đăng Kí"
+  block: "§f• §cBạn Đã Thử Quá Nhiều Lần"
